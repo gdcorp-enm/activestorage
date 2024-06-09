@@ -1,3 +1,104 @@
+# Reamaze's ActiveStorage
+
+Reamaze keeps a fork of ActiveStorage for easy integration with our Rails application.
+
+## Reasons For Changes
+
+### `ActiveStorage::AnalyzeJob`
+
+If `MiniMagick` encountered an error, say a corrupt or empty image, the
+`AnalyzeJob` would fail and retry many times rather uselessly.
+
+### `ActiveStorage::Attachment`
+
+Because our models (namely `Login` and `Attachment`) have bigint `id`s and uuid `uuid`s, we needed a way to specify the `uuid` as the primary key for the association. This can be removed once/if we rename the `uuid` columns of `Login` and `Attachment` to be `id`.
+
+### `ActiveStorage::Attached::Model`
+
+Because our models (namely `Login` and `Attachment`) have bigint `id`s and uuid `uuid`s, we needed a way to specify the `uuid` as the primary key for the association. This can be removed once/if we rename the `uuid` columns of `Login` and `Attachment` to be `id`.
+
+## Diff Between Upstream 6-1-stable
+
+(diff to README.md omitted because of recursion)
+
+```diff
+diff --git a/activestorage/activestorage.gemspec b/activestorage/activestorage.gemspec
+index 105dc06..b142c37 100644
+--- a/activestorage/activestorage.gemspec
++++ b/activestorage/activestorage.gemspec
+@@ -1,6 +1,6 @@
+ # frozen_string_literal: true
+
+-version = File.read(File.expand_path("../RAILS_VERSION", __dir__)).strip
++version = '6.1.7.8'
+
+ Gem::Specification.new do |s|
+   s.platform    = Gem::Platform::RUBY
+diff --git a/activestorage/app/jobs/active_storage/analyze_job.rb b/activestorage/app/jobs/active_storage/analyze_job.rb
+index 890781d..c5f2d0c 100644
+--- a/activestorage/app/jobs/active_storage/analyze_job.rb
++++ b/activestorage/app/jobs/active_storage/analyze_job.rb
+@@ -4,7 +4,7 @@
+ class ActiveStorage::AnalyzeJob < ActiveStorage::BaseJob
+   queue_as { ActiveStorage.queues[:analysis] }
+
+-  discard_on ActiveRecord::RecordNotFound
++  discard_on ActiveRecord::RecordNotFound, MiniMagick::Error
+   retry_on ActiveStorage::IntegrityError, attempts: 10, wait: :exponentially_longer
+
+   def perform(blob)
+diff --git a/activestorage/app/models/active_storage/attachment.rb b/activestorage/app/models/active_storage/attachment.rb
+index ed69dcc..4201565 100644
+--- a/activestorage/app/models/active_storage/attachment.rb
++++ b/activestorage/app/models/active_storage/attachment.rb
+@@ -10,7 +10,7 @@ require "active_support/core_ext/module/delegation"
+ class ActiveStorage::Attachment < ActiveStorage::Record
+   self.table_name = "active_storage_attachments"
+
+-  belongs_to :record, polymorphic: true, touch: true
++  belongs_to :record, polymorphic: true, touch: true, primary_key: :uuid
+   belongs_to :blob, class_name: "ActiveStorage::Blob", autosave: true
+
+   delegate_missing_to :blob
+diff --git a/activestorage/lib/active_storage/attached/model.rb b/activestorage/lib/active_storage/attached/model.rb
+index 85ddbb8..82c7036 100644
+--- a/activestorage/lib/active_storage/attached/model.rb
++++ b/activestorage/lib/active_storage/attached/model.rb
+@@ -67,7 +67,7 @@ module ActiveStorage
+           end
+         CODE
+
+-        has_one :"#{name}_attachment", -> { where(name: name) }, class_name: "ActiveStorage::Attachment", as: :record, inverse_of: :record, dependent: :destroy, strict_loading: strict_loading
++        has_one :"#{name}_attachment", -> { where(name: name) }, class_name: "ActiveStorage::Attachment", as: :record, inverse_of: :record, dependent: :destroy, strict_loading: strict_loading, primary_key: :uuid
+         has_one :"#{name}_blob", through: :"#{name}_attachment", class_name: "ActiveStorage::Blob", source: :blob, strict_loading: strict_loading
+
+         scope :"with_attached_#{name}", -> { includes("#{name}_attachment": :blob) }
+@@ -152,7 +152,7 @@ module ActiveStorage
+           end
+         CODE
+
+-        has_many :"#{name}_attachments", -> { where(name: name) }, as: :record, class_name: "ActiveStorage::Attachment", inverse_of: :record, dependent: :destroy, strict_loading: strict_loading do
++        has_many :"#{name}_attachments", -> { where(name: name) }, as: :record, class_name: "ActiveStorage::Attachment", inverse_of: :record, dependent: :destroy, strict_loading: strict_loading, primary_key: :uuid do
+           def purge
+             each(&:purge)
+             reset
+diff --git a/activestorage/lib/active_storage/downloader.rb b/activestorage/lib/active_storage/downloader.rb
+index 4d7e832..223fdc3 100644
+--- a/activestorage/lib/active_storage/downloader.rb
++++ b/activestorage/lib/active_storage/downloader.rb
+@@ -11,7 +11,7 @@ module ActiveStorage
+     def open(key, checksum:, name: "ActiveStorage-", tmpdir: nil)
+       open_tempfile(name, tmpdir) do |file|
+         download key, file
+-        verify_integrity_of file, checksum: checksum
++        verify_integrity_of file, checksum: checksum unless checksum.empty?
+         yield file
+       end
+     end
+```
+
+---
+
 # Active Storage
 
 Active Storage makes it simple to upload and reference files in cloud services like [Amazon S3](https://aws.amazon.com/s3/), [Google Cloud Storage](https://cloud.google.com/storage/docs/), or [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/), and attach those files to Active Records. Supports having one main service and mirrors in other services for redundancy. It also provides a disk service for testing or local deployments, but the focus is on cloud storage.
