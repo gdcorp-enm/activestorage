@@ -2,14 +2,14 @@
 
 require "fileutils"
 require "pathname"
-require "openssl"
+require "digest/md5"
 require "active_support/core_ext/numeric/bytes"
 
 module ActiveStorage
   # Wraps a local disk path as an Active Storage service. See ActiveStorage::Service for the generic API
   # documentation that applies to all services.
   class Service::DiskService < Service
-    attr_accessor :root
+    attr_reader :root
 
     def initialize(root:, public: false, **options)
       @root = root
@@ -72,7 +72,7 @@ module ActiveStorage
       end
     end
 
-    def url_for_direct_upload(key, expires_in:, content_type:, content_length:, checksum:, custom_metadata: {})
+    def url_for_direct_upload(key, expires_in:, content_type:, content_length:, checksum:)
       instrument :url, key: key do |payload|
         verified_token_with_expiration = ActiveStorage.verifier.generate(
           {
@@ -86,9 +86,11 @@ module ActiveStorage
           purpose: :blob_token
         )
 
-        url_helpers.update_rails_disk_service_url(verified_token_with_expiration, url_options).tap do |generated_url|
-          payload[:url] = generated_url
-        end
+        generated_url = url_helpers.update_rails_disk_service_url(verified_token_with_expiration, host: current_host)
+
+        payload[:url] = generated_url
+
+        generated_url
       end
     end
 
@@ -96,18 +98,8 @@ module ActiveStorage
       { "Content-Type" => content_type }
     end
 
-    def path_for(key) # :nodoc:
+    def path_for(key) #:nodoc:
       File.join root, folder_for(key), key
-    end
-
-    def compose(source_keys, destination_key, **)
-      File.open(make_path_for(destination_key), "w") do |destination_file|
-        source_keys.each do |source_key|
-          File.open(path_for(source_key), "rb") do |source_file|
-            IO.copy_stream(source_file, destination_file)
-          end
-        end
-      end
     end
 
     private
@@ -132,11 +124,14 @@ module ActiveStorage
           purpose: :blob_key
         )
 
-        if url_options.blank?
-          raise ArgumentError, "Cannot generate URL for #{filename} using Disk service, please set ActiveStorage::Current.url_options."
-        end
+        current_uri = URI.parse(current_host)
 
-        url_helpers.rails_disk_service_url(verified_key_with_expiration, filename: filename, **url_options)
+        url_helpers.rails_disk_service_url(verified_key_with_expiration,
+          protocol: current_uri.scheme,
+          host: current_uri.host,
+          port: current_uri.port,
+          filename: filename
+        )
       end
 
 
@@ -159,7 +154,7 @@ module ActiveStorage
       end
 
       def ensure_integrity_of(key, checksum)
-        unless OpenSSL::Digest::MD5.file(path_for(key)).base64digest == checksum
+        unless Digest::MD5.file(path_for(key)).base64digest == checksum
           delete key
           raise ActiveStorage::IntegrityError
         end
@@ -169,8 +164,8 @@ module ActiveStorage
         @url_helpers ||= Rails.application.routes.url_helpers
       end
 
-      def url_options
-        ActiveStorage::Current.url_options
+      def current_host
+        ActiveStorage::Current.host
       end
   end
 end

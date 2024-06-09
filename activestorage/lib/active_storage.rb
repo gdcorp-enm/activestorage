@@ -37,7 +37,6 @@ module ActiveStorage
   extend ActiveSupport::Autoload
 
   autoload :Attached
-  autoload :FixtureSet
   autoload :Service
   autoload :Previewer
   autoload :Analyzer
@@ -351,7 +350,6 @@ module ActiveStorage
   mattr_accessor :unsupported_image_processing_arguments
 
   mattr_accessor :service_urls_expire_in, default: 5.minutes
-  mattr_accessor :urls_expire_in
 
   mattr_accessor :routes_prefix, default: "/rails/active_storage"
   mattr_accessor :draw_routes, default: true
@@ -361,8 +359,6 @@ module ActiveStorage
   mattr_accessor :track_variants, default: false
 
   mattr_accessor :video_preview_arguments, default: "-y -vframes 1 -f image2"
-
-  mattr_accessor :silence_invalid_content_types_warning, default: false
 
   module Transformers
     extend ActiveSupport::Autoload

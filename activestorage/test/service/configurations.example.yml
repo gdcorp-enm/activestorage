@@ -21,8 +21,6 @@
 #   }
 #   project:
 #   bucket:
-#   iam: false
-#   gsa_email: "foobar@baz.iam.gserviceaccount.com"
 #
 # azure:
 #   service: AzureStorage

@@ -6,7 +6,7 @@ Rails.application.configure do
   # In the development environment your application's code is reloaded any time
   # it changes. This slows down response time but is perfect for development
   # since you don't have to restart the web server when you make code changes.
-  config.enable_reloading = true
+  config.cache_classes = false
 
   # Do not eager load code on boot.
   config.eager_load = false
@@ -48,4 +48,8 @@ Rails.application.configure do
 
   # Annotate rendered view with file names
   # config.action_view.annotate_rendered_view_with_filenames = true
+
+  # Use an evented file watcher to asynchronously detect changes in source code,
+  # routes, locales, etc. This feature depends on the listen gem.
+  # config.file_watcher = ActiveSupport::EventedFileUpdateChecker
 end

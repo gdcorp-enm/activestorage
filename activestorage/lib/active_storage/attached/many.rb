@@ -3,25 +3,6 @@
 module ActiveStorage
   # Decorated proxy object representing of multiple attachments to a model.
   class Attached::Many < Attached
-    ##
-    # :method: purge
-    #
-    # Directly purges each associated attachment (i.e. destroys the blobs and
-    # attachments and deletes the files on the service).
-    delegate :purge, to: :purge_many
-
-    ##
-    # :method: purge_later
-    #
-    # Purges each associated attachment through the queuing system.
-    delegate :purge_later, to: :purge_many
-
-    ##
-    # :method: detach
-    #
-    # Deletes associated attachments without purging them, leaving their respective blobs in place.
-    delegate :detach, to: :detach_many
-
     delegate_missing_to :attachments
 
     # Returns all the associated attachment records.
@@ -44,14 +25,15 @@ module ActiveStorage
     #
     #   document.images.attach(params[:images]) # Array of ActionDispatch::Http::UploadedFile objects
     #   document.images.attach(params[:signed_blob_id]) # Signed reference to blob from direct upload
-    #   document.images.attach(io: File.open("/path/to/racecar.jpg"), filename: "racecar.jpg", content_type: "image/jpeg")
+    #   document.images.attach(io: File.open("/path/to/racecar.jpg"), filename: "racecar.jpg", content_type: "image/jpg")
     #   document.images.attach([ first_blob, second_blob ])
     def attach(*attachables)
-      record.public_send("#{name}=", blobs + attachables.flatten)
       if record.persisted? && !record.changed?
-        return if !record.save
+        record.public_send("#{name}=", blobs + attachables.flatten)
+        record.save
+      else
+        record.public_send("#{name}=", (change&.attachables || blobs) + attachables.flatten)
       end
-      record.public_send("#{name}")
     end
 
     # Returns true if any attachments have been made.
@@ -65,13 +47,20 @@ module ActiveStorage
       attachments.any?
     end
 
-    private
-      def purge_many
-        Attached::Changes::PurgeMany.new(name, record, attachments)
-      end
+    # Deletes associated attachments without purging them, leaving their respective blobs in place.
+    def detach
+      attachments.delete_all if attached?
+    end
 
-      def detach_many
-        Attached::Changes::DetachMany.new(name, record, attachments)
-      end
+    ##
+    # :method: purge
+    #
+    # Directly purges each associated attachment (i.e. destroys the blobs and
+    # attachments and deletes the files on the service).
+
+    ##
+    # :method: purge_later
+    #
+    # Purges each associated attachment through the queuing system.
   end
 end

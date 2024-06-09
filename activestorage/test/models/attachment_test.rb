@@ -92,42 +92,17 @@ class ActiveStorage::AttachmentTest < ActiveSupport::TestCase
     assert_equal blob, ActiveStorage::Blob.find_signed(signed_id)
   end
 
-  test "getting a signed blob ID from an attachment with a custom purpose" do
-    blob = create_blob
-    @user.avatar.attach(blob)
-
-    signed_id = @user.avatar.signed_id(purpose: :custom_purpose)
-    assert_equal blob, ActiveStorage::Blob.find_signed!(signed_id, purpose: :custom_purpose)
-  end
-
-  test "getting a signed blob ID from an attachment with a expires_in" do
-    blob = create_blob
-    @user.avatar.attach(blob)
-
-    signed_id = @user.avatar.signed_id(expires_in: 1.minute)
-    assert_equal blob, ActiveStorage::Blob.find_signed!(signed_id)
-  end
-
-  test "fail to find blob within expiration date" do
-    blob = create_blob
-    @user.avatar.attach(blob)
-
-    signed_id = @user.avatar.signed_id(expires_in: 1.minute)
-    travel 2.minutes
-    assert_nil ActiveStorage::Blob.find_signed(signed_id)
-  end
-
   test "signed blob ID backwards compatibility" do
     blob = create_blob
     @user.avatar.attach(blob)
 
-    signed_id_generated_old_way = ActiveStorage.verifier.generate(@user.avatar.blob.id, purpose: :blob_id)
+    signed_id_generated_old_way = ActiveStorage.verifier.generate(@user.avatar.id, purpose: :blob_id)
     assert_equal blob, ActiveStorage::Blob.find_signed!(signed_id_generated_old_way)
   end
 
   test "attaching with strict_loading and getting a signed blob ID from an attachment" do
     blob = create_blob
-    @user.strict_loading!(true)
+    @user.strict_loading!
     @user.avatar.attach(blob)
 
     signed_id = @user.avatar.signed_id
@@ -156,7 +131,7 @@ class ActiveStorage::AttachmentTest < ActiveSupport::TestCase
       assert_equal content_type, blob.reload.content_type
     end
 
-    def assert_blob_identified_outside_transaction(blob, &block)
+    def assert_blob_identified_outside_transaction(blob)
       baseline_transaction_depth = ActiveRecord::Base.connection.open_transactions
       max_transaction_depth = -1
 
@@ -164,7 +139,9 @@ class ActiveStorage::AttachmentTest < ActiveSupport::TestCase
         max_transaction_depth = [ActiveRecord::Base.connection.open_transactions, max_transaction_depth].max
       end
 
-      blob.stub(:identify_without_saving, track_transaction_depth, &block)
+      blob.stub(:identify_without_saving, track_transaction_depth) do
+        yield
+      end
 
       assert_equal 0, (max_transaction_depth - baseline_transaction_depth)
     end

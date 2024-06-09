@@ -3,25 +3,6 @@
 module ActiveStorage
   # Representation of a single attachment to a model.
   class Attached::One < Attached
-    ##
-    # :method: purge
-    #
-    # Directly purges the attachment (i.e. destroys the blob and
-    # attachment and deletes the file on the service).
-    delegate :purge, to: :purge_one
-
-    ##
-    # :method: purge_later
-    #
-    # Purges the attachment through the queuing system.
-    delegate :purge_later, to: :purge_one
-
-    ##
-    # :method: detach
-    #
-    # Deletes the attachment without purging it, leaving its blob in place.
-    delegate :detach, to: :detach_one
-
     delegate_missing_to :attachment, allow_nil: true
 
     # Returns the associated attachment record.
@@ -32,13 +13,6 @@ module ActiveStorage
       change.present? ? change.attachment : record.public_send("#{name}_attachment")
     end
 
-    # Returns +true+ if an attachment is not attached.
-    #
-    #   class User < ApplicationRecord
-    #     has_one_attached :avatar
-    #   end
-    #
-    #   User.new.avatar.blank? # => true
     def blank?
       !attached?
     end
@@ -51,14 +25,15 @@ module ActiveStorage
     #
     #   person.avatar.attach(params[:avatar]) # ActionDispatch::Http::UploadedFile object
     #   person.avatar.attach(params[:signed_blob_id]) # Signed reference to blob from direct upload
-    #   person.avatar.attach(io: File.open("/path/to/face.jpg"), filename: "face.jpg", content_type: "image/jpeg")
+    #   person.avatar.attach(io: File.open("/path/to/face.jpg"), filename: "face.jpg", content_type: "image/jpg")
     #   person.avatar.attach(avatar_blob) # ActiveStorage::Blob object
     def attach(attachable)
-      record.public_send("#{name}=", attachable)
       if record.persisted? && !record.changed?
-        return if !record.save
+        record.public_send("#{name}=", attachable)
+        record.save
+      else
+        record.public_send("#{name}=", attachable)
       end
-      record.public_send("#{name}")
     end
 
     # Returns +true+ if an attachment has been made.
@@ -72,13 +47,34 @@ module ActiveStorage
       attachment.present?
     end
 
-    private
-      def purge_one
-        Attached::Changes::PurgeOne.new(name, record, attachment)
+    # Deletes the attachment without purging it, leaving its blob in place.
+    def detach
+      if attached?
+        attachment.delete
+        write_attachment nil
       end
+    end
 
-      def detach_one
-        Attached::Changes::DetachOne.new(name, record, attachment)
+    # Directly purges the attachment (i.e. destroys the blob and
+    # attachment and deletes the file on the service).
+    def purge
+      if attached?
+        attachment.purge
+        write_attachment nil
+      end
+    end
+
+    # Purges the attachment through the queuing system.
+    def purge_later
+      if attached?
+        attachment.purge_later
+        write_attachment nil
+      end
+    end
+
+    private
+      def write_attachment(attachment)
+        record.public_send("#{name}_attachment=", attachment)
       end
   end
 end

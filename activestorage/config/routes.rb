@@ -16,7 +16,11 @@ Rails.application.routes.draw do
   end
 
   direct :rails_representation do |representation, options|
-    route_for(ActiveStorage.resolve_model_to_route, representation, options)
+    signed_blob_id = representation.blob.signed_id
+    variation_key  = representation.variation.key
+    filename       = representation.blob.filename
+
+    route_for(:rails_blob_representation, signed_blob_id, variation_key, filename, options)
   end
 
   resolve("ActiveStorage::Variant") { |variant, options| route_for(ActiveStorage.resolve_model_to_route, variant, options) }
@@ -24,24 +28,22 @@ Rails.application.routes.draw do
   resolve("ActiveStorage::Preview") { |preview, options| route_for(ActiveStorage.resolve_model_to_route, preview, options) }
 
   direct :rails_blob do |blob, options|
-    route_for(ActiveStorage.resolve_model_to_route, blob, options)
+    route_for(:rails_service_blob, blob.signed_id, blob.filename, options)
   end
 
   resolve("ActiveStorage::Blob")       { |blob, options| route_for(ActiveStorage.resolve_model_to_route, blob, options) }
   resolve("ActiveStorage::Attachment") { |attachment, options| route_for(ActiveStorage.resolve_model_to_route, attachment.blob, options) }
 
   direct :rails_storage_proxy do |model, options|
-    expires_in = options.delete(:expires_in) { ActiveStorage.urls_expire_in }
-
     if model.respond_to?(:signed_id)
       route_for(
         :rails_service_blob_proxy,
-        model.signed_id(expires_in: expires_in),
+        model.signed_id,
         model.filename,
         options
       )
     else
-      signed_blob_id = model.blob.signed_id(expires_in: expires_in)
+      signed_blob_id = model.blob.signed_id
       variation_key  = model.variation.key
       filename       = model.blob.filename
 
@@ -56,17 +58,15 @@ Rails.application.routes.draw do
   end
 
   direct :rails_storage_redirect do |model, options|
-    expires_in = options.delete(:expires_in) { ActiveStorage.urls_expire_in }
-
     if model.respond_to?(:signed_id)
       route_for(
         :rails_service_blob,
-        model.signed_id(expires_in: expires_in),
+        model.signed_id,
         model.filename,
         options
       )
     else
-      signed_blob_id = model.blob.signed_id(expires_in: expires_in)
+      signed_blob_id = model.blob.signed_id
       variation_key  = model.variation.key
       filename       = model.blob.filename
 
