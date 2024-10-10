@@ -139,9 +139,8 @@ index 4f0d5a4309..fd40c774e0 100644
    self.table_name = "active_storage_variant_records"
 
 +  alias_method :uuid, :id
-+  belongs_to :blob, primary_key: :uuid
 
--  belongs_to :blob
+   belongs_to :blob
    has_one_attached :image
  end
 
