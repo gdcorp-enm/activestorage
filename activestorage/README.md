@@ -17,6 +17,15 @@ Because our models (namely `Login` and `Attachment`) have bigint `id`s and uuid 
 
 Because our models (namely `Login` and `Attachment`) have bigint `id`s and uuid `uuid`s, we needed a way to specify the `uuid` as the primary key for the association. This can be removed once/if we rename the `uuid` columns of `Login` and `Attachment` to be `id`.
 
+### `ActiveStorage::VariantWithRecord`
+
+this is the only change from the original method because when tracking variants and variant is being created in a transaction it'll cause an error because the upload is done in after_commit and the image file is closed before the after_commit is called
+
+Let's create the blob before hand and upload it, before attaching it to the variant record
+
+see https://godaddy.slack.com/archives/C02NM3K4Y49/p1670465650542799?thread_ts=1670438110.164269&cid=C02NM3K4Y49
+
+
 ## Diff Between Upstream 6-1-stable
 
 (diff to README.md omitted because of recursion)
@@ -135,7 +144,24 @@ index 4f0d5a4309..fd40c774e0 100644
 -  belongs_to :blob
    has_one_attached :image
  end
+
+diff --git a/activestorage/app/models/active_storage/variant_with_record.rb b/activestorage/app/models/active_storage/variant_with_record.rb
+index 66d2e8a..557ac9e 100644
+--- a/activestorage/app/models/active_storage/variant_with_record.rb
++++ b/activestorage/app/models/active_storage/variant_with_record.rb
+@@ -43,7 +43,7 @@ class ActiveStorage::VariantWithRecord
+       @record =
+         ActiveRecord::Base.connected_to(role: ActiveRecord::Base.writing_role) do
+           blob.variant_records.create_or_find_by!(variation_digest: variation.digest) do |record|
+-            record.image.attach(image)
++            record.image.attach(ActiveStorage::Blob.create_and_upload!(**image))
+           end
+         end
+     end
 ```
+
+
+
 
 ---
 

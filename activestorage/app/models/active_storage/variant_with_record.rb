@@ -43,7 +43,7 @@ class ActiveStorage::VariantWithRecord
       @record =
         ActiveRecord::Base.connected_to(role: ActiveRecord::Base.writing_role) do
           blob.variant_records.create_or_find_by!(variation_digest: variation.digest) do |record|
-            record.image.attach(image)
+            record.image.attach(ActiveStorage::Blob.create_and_upload!(**image))
           end
         end
     end
