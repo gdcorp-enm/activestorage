@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# = Active Storage \Variant
+#
 # Image blobs can have variants that are the result of a set of transformations applied to the original.
 # These variants are used to create thumbnails, fixed-size avatars, or any other derivative image from the
 # original.
@@ -42,7 +44,7 @@
 # You can combine any number of ImageMagick/libvips operations into a variant, as well as any macros provided by the
 # ImageProcessing gem (such as +resize_to_limit+):
 #
-#   avatar.variant(resize_to_limit: [800, 800], monochrome: true, rotate: "-90")
+#   avatar.variant(resize_to_limit: [800, 800], colourspace: "b-w", rotate: "-90")
 #
 # Visit the following links for a list of available ImageProcessing commands and ImageMagick/libvips operations:
 #
@@ -51,6 +53,8 @@
 # * {ImageProcessing::Vips}[https://github.com/janko/image_processing/blob/master/doc/vips.md#methods]
 # * {ruby-vips reference}[http://www.rubydoc.info/gems/ruby-vips/Vips/Image]
 class ActiveStorage::Variant
+  include ActiveStorage::Blob::Servable
+
   attr_reader :blob, :variation
   delegate :service, to: :blob
   delegate :content_type, to: :variation
@@ -67,20 +71,17 @@ class ActiveStorage::Variant
 
   # Returns a combination key of the blob and the variation that together identifies a specific variant.
   def key
-    "variants/#{blob.key}/#{Digest::SHA256.hexdigest(variation.key)}"
+    "variants/#{blob.key}/#{OpenSSL::Digest::SHA256.hexdigest(variation.key)}"
   end
 
   # Returns the URL of the blob variant on the service. See {ActiveStorage::Blob#url} for details.
   #
-  # Use <tt>url_for(variant)</tt> (or the implied form, like +link_to variant+ or +redirect_to variant+) to get the stable URL
+  # Use <tt>url_for(variant)</tt> (or the implied form, like <tt>link_to variant</tt> or <tt>redirect_to variant</tt>) to get the stable URL
   # for a variant that points to the ActiveStorage::RepresentationsController, which in turn will use this +service_call+ method
   # for its redirection.
   def url(expires_in: ActiveStorage.service_urls_expire_in, disposition: :inline)
     service.url key, expires_in: expires_in, disposition: disposition, filename: filename, content_type: content_type
   end
-
-  alias_method :service_url, :url
-  deprecate service_url: :url
 
   # Downloads the file associated with this variant. If no block is given, the entire file is read into memory and returned.
   # That'll use a lot of RAM for very large files. If a block is given, then the download is streamed and yielded in chunks.
@@ -92,15 +93,14 @@ class ActiveStorage::Variant
     ActiveStorage::Filename.new "#{blob.filename.base}.#{variation.format.downcase}"
   end
 
-  alias_method :content_type_for_serving, :content_type
-
-  def forced_disposition_for_serving #:nodoc:
-    nil
-  end
-
   # Returns the receiving variant. Allows ActiveStorage::Variant and ActiveStorage::Preview instances to be used interchangeably.
   def image
     self
+  end
+
+  # Deletes variant file from service.
+  def destroy
+    service.delete(key)
   end
 
   private

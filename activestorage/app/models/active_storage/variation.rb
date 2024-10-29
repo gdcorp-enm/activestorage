@@ -1,14 +1,16 @@
 # frozen_string_literal: true
 
-require "mini_mime"
+require "marcel"
 
+# = Active Storage \Variation
+#
 # A set of transformations that can be applied to a blob to create a variant. This class is exposed via
 # the ActiveStorage::Blob#variant method and should rarely be used directly.
 #
 # In case you do need to use this directly, it's instantiated using a hash of transformations where
 # the key is the command and the value is the arguments. Example:
 #
-#   ActiveStorage::Variation.new(resize_to_limit: [100, 100], monochrome: true, trim: true, rotate: "-90")
+#   ActiveStorage::Variation.new(resize_to_limit: [100, 100], colourspace: "b-w", rotate: "-90", saver: { trim: true })
 #
 # The options map directly to {ImageProcessing}[https://github.com/janko/image_processing] commands.
 class ActiveStorage::Variation
@@ -59,14 +61,14 @@ class ActiveStorage::Variation
 
   def format
     transformations.fetch(:format, :png).tap do |format|
-      if MiniMime.lookup_by_extension(format.to_s).nil?
+      if Marcel::Magic.by_extension(format.to_s).nil?
         raise ArgumentError, "Invalid variant format (#{format.inspect})"
       end
     end
   end
 
   def content_type
-    MiniMime.lookup_by_extension(format.to_s).content_type
+    Marcel::MimeType.for(extension: format.to_s)
   end
 
   # Returns a signed key for all the +transformations+ that this variation was instantiated with.
@@ -75,7 +77,7 @@ class ActiveStorage::Variation
   end
 
   def digest
-    Digest::SHA1.base64digest Marshal.dump(transformations)
+    OpenSSL::Digest::SHA1.base64digest Marshal.dump(transformations)
   end
 
   private

@@ -15,15 +15,15 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "variations have the same key for different types of the same transformation" do
     blob = create_file_blob(filename: "racecar.jpg")
-    variant_a = blob.variant(resize: "100x100")
-    variant_b = blob.variant("resize" => "100x100")
+    variant_a = blob.variant(resize_to_limit: [100, 100])
+    variant_b = blob.variant("resize_to_limit" => [100, 100])
 
     assert_equal variant_a.key, variant_b.key
   end
 
   test "resized variation of JPEG blob" do
     blob = create_file_blob(filename: "racecar.jpg")
-    variant = blob.variant(resize: "100x100").processed
+    variant = blob.variant(resize_to_limit: [100, 100]).processed
     assert_match(/racecar\.jpg/, variant.url)
 
     image = read_image(variant)
@@ -33,7 +33,7 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "resized and monochrome variation of JPEG blob" do
     blob = create_file_blob(filename: "racecar.jpg")
-    variant = blob.variant(resize: "100x100", monochrome: true).processed
+    variant = blob.variant(resize_to_limit: [100, 100], colourspace: "b-w").processed
     assert_match(/racecar\.jpg/, variant.url)
 
     image = read_image(variant)
@@ -44,30 +44,20 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "monochrome with default variant_processor" do
     blob = create_file_blob(filename: "racecar.jpg")
-    variant = blob.variant(monochrome: true).processed
+    variant = blob.variant(colourspace: "b-w").processed
     image = read_image(variant)
     assert_match(/Gray/, image.colorspace)
   end
 
   test "disabled variation of JPEG blob" do
     blob = create_file_blob(filename: "racecar.jpg")
-    variant = blob.variant(resize: "100x100", monochrome: false).processed
+    variant = blob.variant(resize_to_limit: [100, 100], colourspace: "srgb").processed
     assert_match(/racecar\.jpg/, variant.url)
 
     image = read_image(variant)
     assert_equal 100, image.width
     assert_equal 67, image.height
     assert_match(/RGB/, image.colorspace)
-  end
-
-  test "variation with :combine_options is not supported" do
-    blob = create_file_blob(filename: "racecar.jpg")
-    assert_raises(ArgumentError) do
-      blob.variant(combine_options: {
-        resize: "100x100",
-        monochrome: false
-      }).processed
-    end
   end
 
   test "center-weighted crop of JPEG blob using :resize_to_fill" do
@@ -82,7 +72,7 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "resized variation of PSD blob" do
     blob = create_file_blob(filename: "icon.psd", content_type: "image/vnd.adobe.photoshop")
-    variant = blob.variant(resize: "20x20").processed
+    variant = blob.variant(resize_to_limit: [20, 20]).processed
     assert_match(/icon\.png/, variant.url)
 
     image = read_image(variant)
@@ -93,7 +83,7 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "resized variation of ICO blob" do
     blob = create_file_blob(filename: "favicon.ico", content_type: "image/vnd.microsoft.icon")
-    variant = blob.variant(resize: "20x20").processed
+    variant = blob.variant(resize_to_limit: [20, 20]).processed
     assert_match(/icon\.png/, variant.url)
 
     image = read_image(variant)
@@ -104,7 +94,7 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "resized variation of TIFF blob" do
     blob = create_file_blob(filename: "racecar.tif")
-    variant = blob.variant(resize: "50x50").processed
+    variant = blob.variant(resize_to_limit: [50, 50]).processed
     assert_match(/racecar\.png/, variant.url)
 
     image = read_image(variant)
@@ -115,7 +105,7 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "resized variation of BMP blob" do
     blob = create_file_blob(filename: "colors.bmp", content_type: "image/bmp")
-    variant = blob.variant(resize: "15x15").processed
+    variant = blob.variant(resize_to_limit: [15, 15]).processed
     assert_match(/colors\.png/, variant.url)
 
     image = read_image(variant)
@@ -124,11 +114,30 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
     assert_equal 8, image.height
   end
 
+  test "resized variation of WEBP blob" do
+    blob = create_file_blob(filename: "valley.webp")
+    variant = blob.variant(resize_to_limit: [50, 50]).processed
+    assert_match(/valley\.webp/, variant.url)
+
+    image = read_image(variant)
+    assert_equal "WEBP", image.type
+    assert_equal 50, image.width
+    assert_includes [33, 34], image.height
+  end
+
   test "optimized variation of GIF blob" do
     blob = create_file_blob(filename: "image.gif", content_type: "image/gif")
 
-    assert_nothing_raised do
-      blob.variant(layers: "Optimize").processed
+    process_variants_with :vips do
+      assert_nothing_raised do
+        blob.variant(saver: { optimize_gif_frames: true, optimize_gif_transparency: true }).processed
+      end
+    end
+
+    process_variants_with :mini_magick do
+      assert_nothing_raised do
+        blob.variant(layers: "Optimize").processed
+      end
     end
   end
 
@@ -150,14 +159,16 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
 
   test "variation of invariable blob" do
     assert_raises ActiveStorage::InvariableError do
-      create_file_blob(filename: "report.pdf", content_type: "application/pdf").variant(resize: "100x100")
+      create_file_blob(filename: "report.pdf", content_type: "application/pdf").variant(resize_to_limit: [100, 100])
     end
   end
 
   test "url doesn't grow in length despite long variant options" do
-    blob = create_file_blob(filename: "racecar.jpg")
-    variant = blob.variant(font: "a" * 10_000).processed
-    assert_operator variant.url.length, :<, 785
+    process_variants_with :mini_magick do
+      blob = create_file_blob(filename: "racecar.jpg")
+      variant = blob.variant(font: "a" * 10_000).processed
+      assert_operator variant.url.length, :<, 785
+    end
   end
 
   test "thumbnail variation of JPEG blob processed with VIPS" do
@@ -193,18 +204,18 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
     end
 
     blob.service.stub(:upload, mock_upload) do
-      blob.variant(resize: "100x100").processed
+      blob.variant(resize_to_limit: [100, 100]).processed
     end
   end
 
-  test "doesn't crash content_type not recognized by mini_mime" do
+  test "content_type not recognized by marcel isn't included as variable" do
     blob = create_file_blob(filename: "racecar.jpg")
 
-    # image/jpg is not recognised by mini_mime (image/jpeg is correct)
+    # image/jpg is not recognized by marcel (image/jpeg is correct)
     blob.update(content_type: "image/jpg")
 
-    assert_nothing_raised do
-      blob.variant(resize: "100x100")
+    assert_raises(ActiveStorage::InvariableError) do
+      blob.variant(resize_to_limit: [100, 100])
     end
 
     assert_nil blob.send(:format)
@@ -273,12 +284,21 @@ class ActiveStorage::VariantTest < ActiveSupport::TestCase
     end
   end
 
+  test "destroy deletes file from service" do
+    blob = create_file_blob(filename: "racecar.jpg")
+    variant = blob.variant(resize_to_limit: [100, 100]).processed
+
+    assert_changes -> { blob.service.exist?(variant.key) }, from: true, to: false do
+      variant.destroy
+    end
+  end
+
   private
     def process_variants_with(processor)
       previous_processor, ActiveStorage.variant_processor = ActiveStorage.variant_processor, processor
       yield
     rescue LoadError
-      skip "Variant processor #{processor.inspect} is not installed"
+      ENV["BUILDKITE"] ? raise : skip("Variant processor #{processor.inspect} is not installed")
     ensure
       ActiveStorage.variant_processor = previous_processor
     end

@@ -5,7 +5,7 @@ begin
 rescue LoadError
   raise LoadError, <<~ERROR.squish
     Generating image variants require the image_processing gem.
-    Please add `gem 'image_processing', '~> 1.2'` to your Gemfile.
+    Please add `gem "image_processing", "~> 1.2"` to your Gemfile.
   ERROR
 end
 
@@ -38,7 +38,7 @@ module ActiveStorage
             if name.to_s == "combine_options"
               raise ArgumentError, <<~ERROR.squish
                 Active Storage's ImageProcessing transformer doesn't support :combine_options,
-                as it always generates a single ImageMagick command.
+                as it always generates a single command.
               ERROR
             end
 

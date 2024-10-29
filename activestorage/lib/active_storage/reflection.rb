@@ -2,9 +2,19 @@
 
 module ActiveStorage
   module Reflection
+    class HasAttachedReflection < ActiveRecord::Reflection::MacroReflection # :nodoc:
+      def variant(name, transformations)
+        named_variants[name] = NamedVariant.new(transformations)
+      end
+
+      def named_variants
+        @named_variants ||= {}
+      end
+    end
+
     # Holds all the metadata about a has_one_attached attachment as it was
     # specified in the Active Record class.
-    class HasOneAttachedReflection < ActiveRecord::Reflection::MacroReflection #:nodoc:
+    class HasOneAttachedReflection < HasAttachedReflection # :nodoc:
       def macro
         :has_one_attached
       end
@@ -12,7 +22,7 @@ module ActiveStorage
 
     # Holds all the metadata about a has_many_attached attachment as it was
     # specified in the Active Record class.
-    class HasManyAttachedReflection < ActiveRecord::Reflection::MacroReflection #:nodoc:
+    class HasManyAttachedReflection < HasAttachedReflection # :nodoc:
       def macro
         :has_many_attached
       end

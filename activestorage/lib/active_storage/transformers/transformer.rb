@@ -2,6 +2,8 @@
 
 module ActiveStorage
   module Transformers
+    # = Active Storage \Transformers \Transformer
+    #
     # A Transformer applies a set of transformations to an image.
     #
     # The following concrete subclasses are included in Active Storage:
@@ -31,7 +33,7 @@ module ActiveStorage
       private
         # Returns an open Tempfile containing a transformed image in the given +format+.
         # All subclasses implement this method.
-        def process(file, format:) #:doc:
+        def process(file, format:) # :doc:
           raise NotImplementedError
         end
     end
