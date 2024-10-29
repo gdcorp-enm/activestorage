@@ -1,3 +1,156 @@
+# Reamaze's ActiveStorage
+
+Reamaze keeps a fork of ActiveStorage for easy integration with our Rails application.
+
+## Reasons For Changes
+
+### `ActiveStorage::AnalyzeJob`
+
+If `MiniMagick` encountered an error, say a corrupt or empty image, the
+`AnalyzeJob` would fail and retry many times rather uselessly.
+
+### `ActiveStorage::Attachment`
+
+Because our models (namely `Login` and `Attachment`) have bigint `id`s and uuid `uuid`s, we needed a way to specify the `uuid` as the primary key for the association. This can be removed once/if we rename the `uuid` columns of `Login` and `Attachment` to be `id`.
+
+### `ActiveStorage::Attached::Model`
+
+Because our models (namely `Login` and `Attachment`) have bigint `id`s and uuid `uuid`s, we needed a way to specify the `uuid` as the primary key for the association. This can be removed once/if we rename the `uuid` columns of `Login` and `Attachment` to be `id`.
+
+### `ActiveStorage::VariantWithRecord`
+
+this is the only change from the original method because when tracking variants and variant is being created in a transaction it'll cause an error because the upload is done in after_commit and the image file is closed before the after_commit is called
+
+Let's create the blob before hand and upload it, before attaching it to the variant record
+
+see https://godaddy.slack.com/archives/C02NM3K4Y49/p1670465650542799?thread_ts=1670438110.164269&cid=C02NM3K4Y49
+
+
+## Diff Between Upstream 6-1-stable
+
+(diff to README.md omitted because of recursion)
+
+```diff
+diff --git a/activestorage/activestorage.gemspec b/activestorage/activestorage.gemspec
+index 863a275..ee6169c 100644
+--- a/activestorage/activestorage.gemspec
++++ b/activestorage/activestorage.gemspec
+@@ -1,6 +1,6 @@
+ # frozen_string_literal: true
+
+-version = File.read(File.expand_path("../RAILS_VERSION", __dir__)).strip
++version = '7.2.1.2'
+
+ Gem::Specification.new do |s|
+   s.platform    = Gem::Platform::RUBY
+@@ -21,11 +21,11 @@ Gem::Specification.new do |s|
+   s.require_path = "lib"
+
+   s.metadata = {
+-    "bug_tracker_uri"   => "https://github.com/rails/rails/issues",
+-    "changelog_uri"     => "https://github.com/rails/rails/blob/v#{version}/activestorage/CHANGELOG.md",
++    "bug_tracker_uri"   => "https://github.com/gdcorp-enm/activestorage/issues",
++    "changelog_uri"     => "https://github.com/gdcorp-enm/activestorage/CHANGELOG.md",
+     "documentation_uri" => "https://api.rubyonrails.org/v#{version}/",
+     "mailing_list_uri"  => "https://discuss.rubyonrails.org/c/rubyonrails-talk",
+-    "source_code_uri"   => "https://github.com/rails/rails/tree/v#{version}/activestorage",
++    "source_code_uri"   => "https://github.com/github.com/gdcorp-enm/activestorage",
+     "rubygems_mfa_required" => "true",
+   }
+
+diff --git a/activestorage/app/jobs/active_storage/analyze_job.rb b/activestorage/app/jobs/active_storage/analyze_job.rb
+index 44521f7..916d8c3 100644
+--- a/activestorage/app/jobs/active_storage/analyze_job.rb
++++ b/activestorage/app/jobs/active_storage/analyze_job.rb
+@@ -4,7 +4,7 @@
+ class ActiveStorage::AnalyzeJob < ActiveStorage::BaseJob
+   queue_as { ActiveStorage.queues[:analysis] }
+
+-  discard_on ActiveRecord::RecordNotFound
++  discard_on ActiveRecord::RecordNotFound, MiniMagick::Error
+   retry_on ActiveStorage::IntegrityError, attempts: 10, wait: :polynomially_longer
+
+   def perform(blob)
+diff --git a/activestorage/app/models/active_storage/attachment.rb b/activestorage/app/models/active_storage/attachment.rb
+index bf0286b..39c905d 100644
+--- a/activestorage/app/models/active_storage/attachment.rb
++++ b/activestorage/app/models/active_storage/attachment.rb
+@@ -22,7 +22,7 @@ class ActiveStorage::Attachment < ActiveStorage::Record
+   # :method:
+   #
+   # Returns the associated record.
+-  belongs_to :record, polymorphic: true, touch: ActiveStorage.touch_attachment_records
++  belongs_to :record, polymorphic: true, touch: ActiveStorage.touch_attachment_records, primary_key: :uuid
+
+   ##
+   # :method:
+diff --git a/activestorage/app/models/active_storage/blob.rb b/activestorage/app/models/active_storage/blob.rb
+index b500ee3..f78c82d 100644
+--- a/activestorage/app/models/active_storage/blob.rb
++++ b/activestorage/app/models/active_storage/blob.rb
+@@ -60,6 +60,8 @@ class ActiveStorage::Blob < ActiveStorage::Record
+     end
+   end
+
++  alias_method :uuid, :id
++
+   class << self
+     # You can use the signed ID of a blob to refer to it on the client side without fear of tampering.
+     # This is particularly helpful for direct uploads where the client-side needs to refer to the blob
+diff --git a/activestorage/app/models/active_storage/variant_record.rb b/activestorage/app/models/active_storage/variant_record.rb
+index 76b49d5..0c6db4f 100644
+--- a/activestorage/app/models/active_storage/variant_record.rb
++++ b/activestorage/app/models/active_storage/variant_record.rb
+@@ -1,6 +1,8 @@
+ # frozen_string_literal: true
+
+ class ActiveStorage::VariantRecord < ActiveStorage::Record
++  alias_method :uuid, :id
++
+   belongs_to :blob
+   has_one_attached :image
+ end
+diff --git a/activestorage/app/models/active_storage/variant_with_record.rb b/activestorage/app/models/active_storage/variant_with_record.rb
+index fa8e650..b884f52 100644
+--- a/activestorage/app/models/active_storage/variant_with_record.rb
++++ b/activestorage/app/models/active_storage/variant_with_record.rb
+@@ -57,7 +57,7 @@ class ActiveStorage::VariantWithRecord
+       @record =
+         ActiveRecord::Base.connected_to(role: ActiveRecord.writing_role) do
+           blob.variant_records.create_or_find_by!(variation_digest: variation.digest) do |record|
+-            record.image.attach(image)
++            record.image.attach(ActiveStorage::Blob.create_and_upload!(**image))
+           end
+         end
+     end
+diff --git a/activestorage/lib/active_storage/attached/model.rb b/activestorage/lib/active_storage/attached/model.rb
+index 8f58218..071acc0 100644
+--- a/activestorage/lib/active_storage/attached/model.rb
++++ b/activestorage/lib/active_storage/attached/model.rb
+@@ -123,7 +123,7 @@ module ActiveStorage
+           end
+         CODE
+
+-        has_one :"#{name}_attachment", -> { where(name: name) }, class_name: "ActiveStorage::Attachment", as: :record, inverse_of: :record, dependent: :destroy, strict_loading: strict_loading
++        has_one :"#{name}_attachment", -> { where(name: name) }, class_name: "ActiveStorage::Attachment", as: :record, inverse_of: :record, dependent: :destroy, strict_loading: strict_loading, primary_key: :uuid
+         has_one :"#{name}_blob", through: :"#{name}_attachment", class_name: "ActiveStorage::Blob", source: :blob, strict_loading: strict_loading
+
+         scope :"with_attached_#{name}", -> {
+@@ -225,7 +225,7 @@ module ActiveStorage
+           end
+         CODE
+
+-        has_many :"#{name}_attachments", -> { where(name: name) }, as: :record, class_name: "ActiveStorage::Attachment", inverse_of: :record, dependent: :destroy, strict_loading: strict_loading
++        has_many :"#{name}_attachments", -> { where(name: name) }, as: :record, class_name: "ActiveStorage::Attachment", inverse_of: :record, dependent: :destroy, strict_loading: strict_loading, primary_key: :uuid
+         has_many :"#{name}_blobs", through: :"#{name}_attachments", class_name: "ActiveStorage::Blob", source: :blob, strict_loading: strict_loading
+
+         scope :"with_attached_#{name}", -> {
+```
+
+
+
+
+
 # Active Storage
 
 Active Storage makes it simple to upload and reference files in cloud services like [Amazon S3](https://aws.amazon.com/s3/), [Google Cloud Storage](https://cloud.google.com/storage/docs/), or [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/), and attach those files to Active Records. Supports having one main service and mirrors in other services for redundancy. It also provides a disk service for testing or local deployments, but the focus is on cloud storage.
