@@ -22,7 +22,7 @@ class ActiveStorage::Attachment < ActiveStorage::Record
   # :method:
   #
   # Returns the associated record.
-  belongs_to :record, polymorphic: true, touch: ActiveStorage.touch_attachment_records
+  belongs_to :record, polymorphic: true, touch: ActiveStorage.touch_attachment_records, primary_key: :uuid
 
   ##
   # :method:
