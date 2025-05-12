@@ -67,7 +67,7 @@ index 44521f7..916d8c3 100644
    queue_as { ActiveStorage.queues[:analysis] }
 
 -  discard_on ActiveRecord::RecordNotFound
-+  discard_on ActiveRecord::RecordNotFound, MiniMagick::Error
++  discard_on ActiveRecord::RecordNotFound, Vips::Error
    retry_on ActiveStorage::IntegrityError, attempts: 10, wait: :polynomially_longer
 
    def perform(blob)
